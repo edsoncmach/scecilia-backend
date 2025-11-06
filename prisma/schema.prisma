@@ -1,0 +1,162 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===================================
+// 1. ORGANIZAÇÃO E USUÁRIOS
+// ===================================
+
+model Comunidade {
+  id        Int         @id @default(autoincrement())
+  nome      String
+  paroquias Paroquia[]
+}
+
+model Paroquia {
+  id         Int         @id @default(autoincrement())
+  nome       String
+  comunidade Comunidade  @relation(fields: [comunidadeId], references: [id])
+  comunidadeId Int
+  igrejas    Igreja[]
+  categorias Categoria[]
+}
+
+model Igreja {
+  id              Int               @id @default(autoincrement())
+  nome            String
+  tipo            String // "Matriz" ou "Capela"
+  paroquia        Paroquia          @relation(fields: [paroquiaId], references: [id])
+  paroquiaId      Int
+  gruposDeMusicos GrupoDeMusicos[]
+  eventos         Evento[]
+  coordenadores   Usuario[]         @relation("CoordenadorDaIgreja")
+}
+
+model GrupoDeMusicos {
+  id       Int           @id @default(autoincrement())
+  nome     String
+  igreja   Igreja        @relation(fields: [igrejaId], references: [id])
+  igrejaId Int
+  membros  MembroGrupo[]
+  eventos  Evento[]
+  cifras   Cifra[]
+}
+
+model Usuario {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  nome      String
+  senhaHash String
+  
+  role      Role     @default(Musico) // Agora o Prisma sabe o que é 'Role'
+
+  igrejaGerenciadaId Int?
+  igrejaGerenciada   Igreja?  @relation("CoordenadorDaIgreja", fields: [igrejaGerenciadaId], references: [id])
+  
+  // Apenas UMA definição de 'grupos'
+  grupos            MembroGrupo[]
+}
+
+model MembroGrupo {
+  id        Int            @id @default(autoincrement())
+  // 'role' foi removido daqui
+  usuario   Usuario        @relation(fields: [usuarioId], references: [id])
+  usuarioId Int
+  grupo     GrupoDeMusicos @relation(fields: [grupoId], references: [id])
+  grupoId   Int
+  
+  @@unique([usuarioId, grupoId])
+}
+
+// ===================================
+// 2. CIFRAS, CATEGORIAS E RELAÇÕES
+// ===================================
+
+model Cifra {
+  id                  Int               @id @default(autoincrement())
+  nomeMusica          String
+  interprete          String
+  tomOriginal         String
+  conteudoChordpro    String            @db.Text
+  
+  gruposDeMusicos     GrupoDeMusicos    @relation(fields: [gruposDeMusicosId], references: [id])
+  gruposDeMusicosId   Int
+  
+  categoriasEmUso     CifraCategoria[]
+  eventos             EventoCifras[]
+}
+
+model CifraCategoria {
+  id          Int       @id @default(autoincrement())
+  cifra       Cifra     @relation(fields: [cifraId], references: [id])
+  cifraId     Int
+  categoria   Categoria @relation(fields: [categoriaId], references: [id])
+  categoriaId Int
+
+  @@unique([cifraId, categoriaId])
+  @@map("cifra_categorias")
+}
+
+model Categoria {
+  id            Int              @id @default(autoincrement())
+  nome          String
+  cifrasLigadas CifraCategoria[]
+  paroquiaId    Int
+  paroquia      Paroquia         @relation(fields: [paroquiaId], references: [id])
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  
+  @@unique([nome, paroquiaId])
+  @@map("categorias")
+}
+
+// ===================================
+// 3. EVENTOS (CELEBRAÇÕES)
+// ===================================
+
+// (Modelo 'Tag' e 'TagTipo' removidos por simplicidade, já que Categoria assumiu)
+
+model CelebracaoTipo {
+  id      Int      @id @default(autoincrement())
+  nome    String   // "Missa", "Retiro", "Cerco de Jericó"
+  eventos Evento[]
+}
+
+model Evento {
+  id                      Int             @id @default(autoincrement())
+  dataEvento              DateTime
+  tituloOpcional          String?
+  igreja                  Igreja          @relation(fields: [igrejaId], references: [id])
+  igrejaId                Int
+  grupo                   GrupoDeMusicos  @relation(fields: [grupoId], references: [id])
+  grupoId                 Int
+  tipoCelebracao          CelebracaoTipo  @relation(fields: [tipoCelebracaoId], references: [id])
+  tipoCelebracaoId        Int
+  cifras                  EventoCifras[]
+  urlPdfCelebracao        String?
+  pdfUltimaAtualizacao    DateTime?
+}
+
+model EventoCifras {
+  id           Int      @id @default(autoincrement())
+  ordem        Int
+  tomExecucao  String
+  evento       Evento   @relation(fields: [eventoId], references: [id])
+  eventoId     Int
+  cifra        Cifra    @relation(fields: [cifraId], references: [id])
+  cifraId      Int
+}
+
+// ===================================
+// A PEÇA QUE FALTAVA
+// ===================================
+enum Role {
+  Admin
+  Coordenador
+  Musico
+}
